@@ -30,6 +30,11 @@ pub fn build(b: *std.build.Builder) void {
     exe_tests.setTarget(target);
     exe_tests.setBuildMode(mode);
 
+    const shadowsocks_tests = b.addTest("src/shadowsocks.zig");
+    exe_tests.setTarget(target);
+    exe_tests.setBuildMode(mode);
+
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&exe_tests.step);
+    test_step.dependOn(&shadowsocks_tests.step);
 }
