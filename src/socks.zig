@@ -11,7 +11,7 @@ fn handleClient(socket: network.Socket) !void {
     // Handle initial request
     count = try socket.receive(&buffer);
 
-    // Ijnitial request needs to have at least 8 bytes
+    // Initial request needs to have at least 8 bytes
     if (buffer.len < 8) {
         return;
     }
@@ -42,8 +42,14 @@ fn handleClient(socket: network.Socket) !void {
 
     // Setup sockets for concurrent send and receive
     var socket_set = try network.SocketSet.init(std.heap.page_allocator);
-    try socket_set.add(socket, .{ .read = true, .write = true });
-    try socket_set.add(remote_socket, .{ .read = true, .write = true });
+    try socket_set.add(socket, .{
+        .read = true,
+        .write = false,
+    });
+    try socket_set.add(remote_socket, .{
+        .read = true,
+        .write = false,
+    });
 
     // Proxy loop
     while (true) {
