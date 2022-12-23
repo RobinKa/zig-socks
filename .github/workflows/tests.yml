@@ -1,3 +1,6 @@
+name: Run tests
+on: push
+
 jobs:
   test:
     strategy:
