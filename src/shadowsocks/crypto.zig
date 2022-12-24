@@ -8,6 +8,11 @@ pub fn deriveSessionSubkey(key: []const u8, session_subkey: []u8) void {
     blake.final(session_subkey);
 }
 
+pub fn generateRandomSalt(salt: []u8, seed: [std.rand.DefaultCsprng.secret_seed_length]u8) void {
+    var prng = std.rand.DefaultCsprng.init(seed);
+    prng.fill(salt);
+}
+
 pub const Encryptor = struct {
     nonce: u96 = 0,
     key: [Aes256Gcm.key_length]u8,
@@ -70,4 +75,12 @@ test "Encryptor decrypt" {
 
     try std.testing.expectEqualStrings("asdfqwer", &message);
     try std.testing.expectEqual(@as(u96, 1), encryptor.nonce);
+}
+
+test "generateRandomSalt" {
+    var salt: [16]u8 = undefined;
+    const seed: [32]u8 = .{1} ** 32;
+    generateRandomSalt(&salt, seed);
+
+    try std.testing.expect(true);
 }
