@@ -23,6 +23,7 @@ pub const FixedLengthRequestHeader = struct {
 pub const VariableLengthRequestHeader = struct {
     address_type: u8,
     address: []u8,
+    port: u16,
     padding_length: u16,
     padding: []u8,
     initial_payload: []u8,
@@ -41,8 +42,25 @@ pub const VariableLengthRequestHeader = struct {
         const start_pos = reader.context.pos;
 
         const address_type = try reader.readIntBig(u8);
-        var address: []u8 = try allocator.alloc(u8, 6);
-        try reader.readNoEof(address[0..6]);
+        var address: []u8 = add: {
+            switch (address_type) {
+                1 => {
+                    var addr: []u8 = try allocator.alloc(u8, 4);
+                    try reader.readNoEof(addr);
+                    break :add addr;
+                },
+                3 => {
+                    const address_length = try reader.readIntBig(u8);
+                    var addr: []u8 = try allocator.alloc(u8, address_length);
+                    try reader.readNoEof(addr);
+                    break :add addr;
+                },
+                // TODO: 0x04 ipv6
+                else => unreachable,
+            }
+        };
+        
+        const port = try reader.readIntBig(u16);
 
         const padding_length = try reader.readIntBig(u16);
         var padding: []u8 = try allocator.alloc(u8, padding_length);
@@ -55,6 +73,7 @@ pub const VariableLengthRequestHeader = struct {
         return .{
             .address_type = address_type,
             .address = address,
+            .port = port,
             .padding_length = padding_length,
             .padding = padding,
             .initial_payload = initial_payload,
@@ -138,7 +157,6 @@ test "encode VariableLengthRequestHeader" {
     const header = VariableLengthRequestHeader{
         .address_type = 1,
         .address = &address,
-        .port = 55,
         .padding_length = 4,
         .padding = &padding,
         .initial_payload = &initial_payload,
@@ -151,8 +169,8 @@ test "encode VariableLengthRequestHeader" {
 
     try header.encode(writer);
 
-    try std.testing.expectEqual(@as(usize, 18), stream.pos);
-    try std.testing.expectEqualSlices(u8, &.{ 1, 1, 2, 3, 4, 5, 6, 0, 4, 0, 0, 0, 0, 5, 6, 7 }, buffer[0..18]);
+    try std.testing.expectEqual(@as(usize, 16), stream.pos);
+    try std.testing.expectEqualSlices(u8, &.{ 1, 1, 2, 3, 4, 5, 6, 0, 4, 0, 0, 0, 0, 5, 6, 7 }, buffer[0..16]);
 }
 
 test "decode VariableLengthRequestHeader" {
@@ -163,7 +181,7 @@ test "decode VariableLengthRequestHeader" {
     const header = try VariableLengthRequestHeader.decode(reader, buffer.len - 3, std.heap.page_allocator);
     defer header.deinit();
 
-    try std.testing.expectEqual(@as(usize, 18), reader.context.pos);
+    try std.testing.expectEqual(@as(usize, 16), reader.context.pos);
     try std.testing.expectEqual(@as(u8, 1), header.address_type);
     try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3, 4, 5, 6 }, header.address);
     try std.testing.expectEqual(@as(u16, 4), header.padding_length);
@@ -175,7 +193,7 @@ test "encode FixedLengthResponseHeader" {
     const header = FixedLengthResponseHeader{
         .type = 0,
         .timestamp = 123,
-        .salt = 77,
+        .salt = .{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31 },
         .length = 33,
     };
 
@@ -185,20 +203,20 @@ test "encode FixedLengthResponseHeader" {
 
     try header.encode(writer);
 
-    try std.testing.expectEqual(@as(usize, 15), stream.pos);
-    try std.testing.expectEqualSlices(u8, &.{ 0, 0, 0, 0, 0, 0, 0, 0, 123, 0, 0, 0, 77, 0, 33 }, buffer[0..15]);
+    try std.testing.expectEqual(@as(usize, 43), stream.pos);
+    try std.testing.expectEqualSlices(u8, &.{ 0, 0, 0, 0, 0, 0, 0, 0, 123, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 0, 33 }, buffer[0..43]);
 }
 
 test "decode FixedLengthResponseHeader" {
-    var buffer = [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 123, 0, 0, 0, 77, 0, 33, 7, 8, 9, 10 };
+    var buffer = [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 123, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 0, 33, 7, 8, 9, 10 };
     var stream = std.io.fixedBufferStream(&buffer);
     var reader = stream.reader();
 
     const header = try FixedLengthResponseHeader.decode(reader);
 
-    try std.testing.expectEqual(@as(usize, 15), reader.context.pos);
+    try std.testing.expectEqual(@as(usize, 43), reader.context.pos);
     try std.testing.expectEqual(@as(u8, 0), header.type);
     try std.testing.expectEqual(@as(u64, 123), header.timestamp);
-    try std.testing.expectEqual(@as(u32, 77), header.salt);
+    try std.testing.expectEqualSlices(u8, &.{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31 }, &header.salt);
     try std.testing.expectEqual(@as(u16, 33), header.length);
 }
